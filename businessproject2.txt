@@ -1,0 +1,700 @@
+```{r include=FALSE}
+load("~/Downloads/StudentData.Rdata")
+ls()  
+```
+
+
+
+######### FACTANAL 
+
+
+```{r}
+music_only <- HoursMusic[, c("Mellow", "Unpretentous", "Sophisticated", "Intense", "Contemporary")]
+
+factanal (music_only, 2)
+```
+
+
+
+
+```{r}
+library(tm,verbose=FALSE)
+library(psy)
+library(dplyr)
+
+cronbach(music_only[,c(1,2,5)])
+cronbach(music_only[,c(3,4)])
+```
+All values of 𝛼are above 0.6, so the scales are usable.
+
+
+```{r}
+print(factanal(music_only,2),cutoff=.6)
+```
+
+
+
+
+
+Creating scales : 
+
+```{r}
+Refined_Passion=apply(music_only[,3:4],1,mean)
+Modern_Simplicity <- apply(music_only[, c(1, 2, 5)], 1, mean)
+
+```
+
+
+
+
+# Introduction
+
+Cluster analysis can help segment the customers based on their characteristics, preferences, behaviors, or needs; thus, allowing us to better understand the customer base and tailor marketing efforts accordingly. There is 1 000 000 unique customers
+
+```{r include=FALSE}
+summary (SocioDemo)
+```
+
+
+
+
+```{r include=FALSE}
+library(dplyr)
+library(GGally)
+library(inspectdf)
+library(ggiraphExtra)
+library(factoextra)
+library(tidyr)
+```
+
+```{r include=FALSE}
+length(unique(SocioDemo$ID))
+
+```
+
+
+
+```{r echo=FALSE}
+library(dplyr)
+library(ggplot2)
+
+
+total_customers_by_time <- HistoryData %>%
+  group_by(Time) %>%
+  summarise(Total_Customers = n_distinct(ID))  
+
+
+subscription_behavior <- HistoryData %>%
+  group_by(Time, Ad, Choice) %>%
+  summarise(Count = n_distinct(ID), .groups = "drop")  
+
+
+subscription_behavior <- subscription_behavior %>%
+  left_join(total_customers_by_time, by = "Time") %>%
+  mutate(Proportion = Count / Total_Customers)  
+
+
+subscription_behavior <- subscription_behavior %>%
+  mutate(Subscription_Tier = paste("Ad:", Ad, "Choice:", Choice))
+
+
+ggplot(subscription_behavior, aes(x = Time, y = Proportion, color = Subscription_Tier)) +
+  geom_line(size = 1) +
+  labs(
+    title = "Subscription Behavior Over Time",
+    x = "Time (Months)",
+    y = "Proportion of Customers",
+    color = "Subscription Tier"
+  ) +
+  theme_minimal() +
+  theme(
+    plot.title = element_text(size = 14, face = "bold"),
+    axis.title = element_text(size = 12),
+    legend.title = element_text(size = 12),
+    legend.text = element_text(size = 10)
+  )
+```
+
+From the plot we can see the proportion of customers in each subscription tier over time. Initially, adds and no free choice (1/1) starts with a large proportion but steadily declines as customers switch to different subcription or churn. Conversely, Adds but the customers paid for the possibility to choose themselves (1/2) and free choice/no adds (2/2) steadily increase in proportion, indicating growing preference and retention in being bale to freely chose musics. Meanwhile, No adds but the music is randomly selected (2/1) remains relatively flat, suggesting consistent but low interest in this upgrade. 
+
+
+```{r include=FALSE}
+
+table (Action120$Action)
+```
+
+
+
+
+# profit per clients : customers into different clusters according to their profit level.
+#idea of cluster 1 
+# Profit Analysis: Identifying High-Profit Groups
+## Objective: Identify which customer groups bring the most profit and target them for promotions or exclusive offers.
+Use a cluster analysis to identify the most valuable customers and target them with personalized offers or rewards
+
+
+```{r}
+library(dplyr)
+library(ggplot2)
+
+
+plan_profit <- c("Free" = 1.00, "No Ads" = 1.50, "Choice (with Ads)" = 3.00, "Choice (no Ads)" = 4.50)
+
+
+history_with_profit <- HistoryData %>%
+  mutate(Profit = case_when(
+    Ad == 1 & Choice == 1 ~ plan_profit["Free"],
+    Ad == 1 & Choice == 2 ~ plan_profit["Choice (with Ads)" ],
+    Ad == 2 & Choice == 1 ~ plan_profit["No Ads"],
+    Ad == 2 & Choice == 2 ~ plan_profit["Choice (no Ads)"],
+    TRUE ~ plan_profit["Free"]
+  ))
+
+
+average_profit <- history_with_profit %>%
+  group_by(ID) %>%
+  summarise(
+    Total_Profit = sum(Profit, na.rm = TRUE),
+    Months_Recorded = n(),
+    Avg_Profit = Total_Profit / Months_Recorded
+  )
+
+
+# View the result
+head(average_profit)
+```
+
+
+```{r echo=FALSE}
+
+
+total_time_data <- HistoryData %>%
+  mutate(Plan = paste(Choice, Ad, sep = "-")) %>%
+  group_by(ID) %>%
+  summarize(
+    Total_Time = n() 
+  )
+
+
+cluster_data <- average_profit %>%
+  rename(Total_Time = Months_Recorded)
+
+
+cluster_data_norm <- cluster_data %>%
+  mutate(across(c(Avg_Profit, Total_Time), scale))
+
+
+set.seed(123)
+kmeans_result <- kmeans(cluster_data_norm[, c("Avg_Profit", "Total_Time")], centers = 3)
+cluster_data$Cluster <- kmeans_result$cluster
+
+
+cluster_summary <- cluster_data %>%
+  group_by(Cluster) %>%
+  summarize(
+    Avg_Profit_Mean = mean(Avg_Profit, na.rm = TRUE),
+    Total_Time_Mean = mean(Total_Time, na.rm = TRUE),
+    User_Count = n()
+  )
+
+
+print(cluster_summary)
+
+
+cluster_plot <- ggplot(cluster_data, aes(x = Avg_Profit, y = Total_Time, color = factor(Cluster))) +
+  geom_point(alpha = 0.6, size = 2) +
+  labs(
+    title = "Clustering Results: Avg Profit vs Total Time",
+    x = "Average Profit",
+    y = "Total Subscription Time",
+    color = "Cluster"
+  ) +
+  theme_minimal()
+
+
+print(cluster_plot)
+```
+I first clustered on the avergae profit per customers and their total subscription time as we want to Identify distinct customer segments based on their value (profit) and loyalty (subscription time)
+
+
+
+The clusters are well-separated, with Cluster 2 (high profit, low time) being a key area of focus for retention strategies to maximize lifetime value. Additionally, Cluster 1 users could be targeted for upselling campaigns to increase revenue, while Cluster 3 represents a core, loyal customer base to be nurtured and retained.
+
+
+Bu what are the groups ? 
+
+
+```{r}
+cluster_with_demo <- cluster_data %>%
+  left_join(HoursMusic, by = "ID") %>%
+  left_join(SocioDemo, by = "ID")
+
+
+
+cluster_demo_summary <- cluster_with_demo %>%
+  group_by(Cluster) %>%
+  summarise(
+    Avg_Profit_Mean = mean(Avg_Profit, na.rm = TRUE),
+    Total_Time_Mean = mean(Total_Time, na.rm = TRUE),
+    Age_Mean = mean(Age, na.rm = TRUE),           
+    Woman_Percentage = mean(Woman, na.rm = TRUE) * 100, 
+    Income_Mean = mean(Salary, na.rm = TRUE),         
+    User_Count = n(),                            
+    Most_Common_City = names(which.max(table(City))), 
+    Most_Common_Education = names(which.max(table(Education))),
+    Avg_Mellow = mean(Mellow, na.rm = TRUE),
+    Avg_Unpretentious = mean(Unpretentous, na.rm = TRUE),
+    Avg_Sophisticated = mean(Sophisticated, na.rm = TRUE),
+    Avg_Intense = mean(Intense, na.rm = TRUE),
+    Avg_Contemporary = mean(Contemporary, na.rm = TRUE),
+    Most_Common_Education = names(sort(table(Education), decreasing = TRUE))[1],
+    Most_Common_City = names(sort(table(City), decreasing = TRUE))[1]
+  )
+
+
+print(cluster_demo_summary)
+
+```
+From this we could : 
+
+Cluster 1 includes users with the highest average salary of $79,329.02, predominantly located in urban areas. These users generate low profit and have shorter subscription times. 
+
+Cluster 2 represents users with an average salary of $76,978.84, primarily from rural areas. They generate the highest profit among the clusters but have moderate subscription durations.We need to ensure these high-value users feel incentivized to stay subscribed
+
+Cluster 3 includes users with an average salary of $78,632.27, primarily located in suburban areas. These users have the longest subscription times and generate moderate to high profit. To maintain their loyalty, offer exclusive benefits such as early access to new features or content. 
+
+
+
+
+
+
+
+
+
+
+
+
+# 2- idea of cluster on promotion/ engagement behavior
+
+#  Promotion Effectiveness: Identifying Loyal Customers
+## Objective: Analyze how promotions (e.g., “No Ads” or “Choice Free”) impact customer behavior and identify which groups are most likely to continue with the offers.--> send offers and promotion to customers who are more likely to keep the upgrade after
+
+We first looked at customer who received a promotion. We can see that out of 1 million customers, 1017 got the action 1 and 1963 got the action 2. but out of those customer, which one kept the option after the end of the three months ? 
+
+Whats interesting is that if we compute the people who got an offer (2980) but that were not already on the plan of the offer, we end up with only 1136 eligible customers 
+
+### only keep promote customers as we ar eonly interested in the one that got a promotion
+
+```{r include=FALSE}
+
+promoted_customers <- Action120 %>%
+  filter(Action %in% c(1, 2))
+
+
+length(unique(promoted_customers$ID))
+```
+
+### keep week after week 120
+
+```{r}
+# Filter for relevant times (Time >= 121)
+history_filtered <- HistoryData %>%
+  filter(Time >= 120)
+
+
+head(history_filtered)
+```
+
+### compute baseline plan for each customers
+
+```{r include=FALSE}
+baseline_plan <- history_filtered %>%
+  filter(Time == 120) %>%
+  select(ID, Initial_Ad = Ad, Initial_Choice = Choice)
+
+
+head(baseline_plan)
+```
+
+### get baseline plan from time 120 with info on add and choice
+
+```{r include=FALSE}
+history_with_baseline <- history_filtered %>%
+  left_join(baseline_plan, by = "ID")
+
+head(history_with_baseline)
+```
+
+### only keep promote customers as we ar eonly interested in the one that got a promotion
+
+```{r include=FALSE}
+merged_data <- merge(promoted_customers, history_with_baseline, by = "ID")
+
+head(merged_data)
+```
+
+### check for eligible customers
+
+```{r include=FALSE}
+eligible_customers <- merged_data %>%
+  filter(
+    (Action == 1 & Initial_Ad == 1) |  
+    (Action == 2 & Initial_Choice == 1 )  
+  )
+
+head(merged_data)
+length(unique(eligible_customers$ID))
+```
+
+```{r include=FALSE}
+eligible_customers <- eligible_customers %>%
+  mutate(
+    Upgraded_After = ifelse(
+      (Action == 1 & Ad > Initial_Ad & Time > 123) |  
+      (Action == 2 & Choice > Initial_Choice & Time > 123),  
+      1, 0
+    )
+  )
+```
+
+```{r include=FALSE}
+library(dplyr)
+
+
+history_with_baseline <- history_with_baseline %>%
+  filter(Time > 123) %>%
+  group_by(ID) %>%
+  arrange(Time) %>% 
+  mutate(
+    Sustained_Upgrade = ifelse(Ad > Initial_Ad | Choice > Initial_Choice, 1, 0), 
+    Upgrade_Streak = cumsum(Sustained_Upgrade == 0 & lag(Sustained_Upgrade, default = 0) == 1) 
+  ) %>%
+  group_by(ID, Upgrade_Streak) %>%
+  summarise(
+    Upgrade_Duration = sum(Sustained_Upgrade, na.rm = TRUE) 
+  ) %>%
+  summarise(
+    Total_Upgrade_Duration = max(Upgrade_Duration, na.rm = TRUE) 
+  )
+
+
+eligible_customers <- eligible_customers %>%
+  left_join(history_with_baseline, by = "ID")
+
+
+head(eligible_customers)
+```
+
+```{r}
+
+eligible_customers_action1 <- eligible_customers %>%
+  filter(Action == 1)
+
+
+eligible_customers_action2 <- eligible_customers %>%
+  filter(Action == 2)
+
+
+unique_ids_action1 <- eligible_customers_action1 %>%
+  summarise(Unique_IDs = n_distinct(ID))
+
+unique_ids_action2 <- eligible_customers_action2 %>%
+  summarise(Unique_IDs = n_distinct(ID))
+
+
+print(paste("Number of unique customers with Action = 1:", unique_ids_action1$Unique_IDs))
+print(paste("Number of unique customers with Action = 2:", unique_ids_action2$Unique_IDs))
+```
+We found 603 customers eligible for action 1 and 533 for action 2. We calculated the number of eligible customer by looking at the customer who got the promotiuon at week 120 and see if they were already on the upgraded version of the offer. if they were then nothing was done to them. 
+
+
+
+
+### for the group separeted
+
+
+```{r include=FALSE}
+library(dplyr)
+library(ggplot2)
+
+
+group_1 <- eligible_customers %>%
+  filter(Action == 1) %>%
+  group_by(ID) %>%
+  summarise(Total_Upgrade_Duration = max(Total_Upgrade_Duration, na.rm = TRUE))
+
+group_2 <- eligible_customers %>%
+  filter(Action == 2) %>%
+  group_by(ID) %>%
+  summarise(Total_Upgrade_Duration = max(Total_Upgrade_Duration, na.rm = TRUE))
+
+
+perform_clustering <- function(data, socio_demo_data, centers) {
+
+  scaled_data <- scale(data$Total_Upgrade_Duration)
+  
+
+  set.seed(123)
+  wss <- sapply(1:10, function(k) {
+    kmeans(scaled_data, centers = k, nstart = 20)$tot.withinss
+  })
+
+  plot(1:10, wss, type = "b", pch = 19, frame = FALSE,
+       xlab = "Number of Clusters (k)",
+       ylab = "Total Within-Cluster Sum of Squares",
+       main = "Elbow Method for Optimal Clusters")
+  
+
+  set.seed(123)
+  kmeans_result <- kmeans(scaled_data, centers = centers, nstart = 20)
+  
+
+  data <- data %>%
+    mutate(Cluster = kmeans_result$cluster)
+  
+
+  merged_data <- data %>%
+    left_join(socio_demo_data, by = "ID")
+  
+
+  cluster_summary <- merged_data %>%
+    group_by(Cluster) %>%
+    summarise(
+      Avg_Upgrade_Duration = mean(Total_Upgrade_Duration, na.rm = TRUE),
+      Total_Customers = n(),
+      Avg_Age = mean(Age, na.rm = TRUE),
+      Avg_Salary = mean(Salary, na.rm = TRUE),
+      Female_Percentage = mean(Woman == 1, na.rm = TRUE) * 100,
+      Most_Common_Education = names(sort(table(Education), decreasing = TRUE))[1],
+      Most_Common_City = names(sort(table(City), decreasing = TRUE))[1]
+    )
+  
+  return(cluster_summary)
+}
+
+
+socio_demo_data <- SocioDemo 
+
+cluster_summary_group_1 <- perform_clustering(group_1, socio_demo_data, centers = 3)
+cluster_summary_group_2 <- perform_clustering(group_2, socio_demo_data, centers = 3)
+
+
+print("Cluster Summary for Group 1 (Action = 1)")
+print(cluster_summary_group_1)
+
+print("Cluster Summary for Group 2 (Action = 2)")
+print(cluster_summary_group_2)
+```
+
+###### group with factors 
+
+
+```{r echo=FALSE}
+
+perform_clustering_with_scales_WITHOUT <- function(data, SocioDemo, centers, refined_passion, modern_simplicity) {
+
+  data <- data %>%
+    left_join(
+      data.frame(ID = socio_demo_data$ID, Refined_Passion = refined_passion, Modern_Simplicity = modern_simplicity),
+      by = "ID"
+    )
+
+
+  clustering_vars <- data %>% select(Total_Upgrade_Duration)
+  scaled_data <- scale(clustering_vars)
+
+
+  set.seed(123)
+  wss <- sapply(1:10, function(k) {
+    kmeans(scaled_data, centers = k, nstart = 20)$tot.withinss
+  })
+
+
+  plot(1:10, wss, type = "b", pch = 19, frame = FALSE,
+       xlab = "Number of Clusters (k)",
+       ylab = "Total Within-Cluster Sum of Squares",
+       main = "Elbow Method for Optimal Clusters")
+
+
+  set.seed(123)
+  kmeans_result <- kmeans(scaled_data, centers = centers, nstart = 20)
+
+
+  data <- data %>%
+    mutate(Cluster = kmeans_result$cluster)
+
+
+  merged_data <- data %>%
+    left_join(socio_demo_data, by = "ID")
+
+
+cluster_summary <- merged_data %>%
+  group_by(Cluster) %>%
+  summarise(
+    Avg_Upgrade_Duration = mean(Total_Upgrade_Duration, na.rm = TRUE),
+    Total_Customers = n(),
+    Avg_Age = mean(Age, na.rm = TRUE),
+    Avg_Salary = mean(Salary, na.rm = TRUE),
+    Female_Percentage = mean(Woman == 1, na.rm = TRUE) * 100,
+    Most_Common_Education = names(sort(table(Education), decreasing = TRUE))[1],
+    Most_Common_City = names(sort(table(City), decreasing = TRUE))[1],
+    Avg_Refined_Passion = mean(Refined_Passion, na.rm = TRUE),  
+    Avg_Modern_Simplicity = mean(Modern_Simplicity, na.rm = TRUE)  
+  )
+
+
+  return(cluster_summary)
+}
+
+
+cluster_summary_group_1 <- perform_clustering_with_scales_WITHOUT(
+  group_1,
+  socio_demo_data,
+  centers = 3,
+  refined_passion = Refined_Passion,
+  modern_simplicity = Modern_Simplicity
+)
+
+cluster_summary_group_2 <- perform_clustering_with_scales_WITHOUT(
+  group_2,
+  socio_demo_data,
+  centers = 3,
+  refined_passion = Refined_Passion,
+  modern_simplicity = Modern_Simplicity
+)
+
+
+print("Cluster Summary for Group 1 (Action = 1)")
+print(cluster_summary_group_1)
+
+print("Cluster Summary for Group 2 (Action = 2)")
+print(cluster_summary_group_2)
+```
+
+## average upgrade cluster with pre post campaign
+
+
+```{r include=FALSE}
+library(dplyr)
+library(ggplot2)
+
+
+plan_profit <- c("Free" = 1.00, "No Ads" = 1.50, "Choice (with Ads)" = 3.00, "Choice (no Ads)" = 4.50)
+
+
+history_with_profit <- HistoryData %>%
+  mutate(Profit = case_when(
+    Ad == 1 & Choice == 1 ~ plan_profit["Free"],
+    Ad == 1 & Choice == 2 ~ plan_profit["Choice (with Ads)"],
+    Ad == 2 & Choice == 1 ~ plan_profit["No Ads"],
+    Ad == 2 & Choice == 2 ~ plan_profit["Choice (no Ads)"],
+    TRUE ~ plan_profit["Free"]
+  ))
+
+
+history_with_action_c <- history_with_profit %>%
+  left_join(Action120 %>% select(ID, Action), by = "ID")
+
+
+
+
+```
+
+```{r}
+
+perform_clustering_with_scales_WITH_PROFIT <- function(data, socio_demo_data, centers, refined_passion, modern_simplicity, profit_data) {
+
+  data <- data %>%
+    left_join(
+      data.frame(ID = socio_demo_data$ID, Refined_Passion = refined_passion, Modern_Simplicity = modern_simplicity),
+      by = "ID"
+    )
+
+
+  clustering_vars <- data %>% select(Total_Upgrade_Duration)
+  scaled_data <- scale(clustering_vars)
+
+
+  set.seed(123)
+  wss <- sapply(1:10, function(k) {
+    kmeans(scaled_data, centers = k, nstart = 20)$tot.withinss
+  })
+
+
+
+
+  set.seed(123)
+  kmeans_result <- kmeans(scaled_data, centers = centers, nstart = 20)
+
+  data <- data %>%
+    mutate(Cluster = kmeans_result$cluster)
+
+
+  merged_data <- data %>%
+    left_join(socio_demo_data, by = "ID") %>%
+    left_join(profit_data, by = "ID")  
+
+
+  cluster_summary <- merged_data %>%
+    group_by(Cluster) %>%
+    summarise(
+      Avg_Upgrade_Duration = mean(Total_Upgrade_Duration, na.rm = TRUE),
+      Total_Customers = n(),
+      Avg_Age = mean(Age, na.rm = TRUE),
+      Avg_Salary = mean(Salary, na.rm = TRUE),
+      Female_Percentage = mean(Woman == 1, na.rm = TRUE) * 100,
+      Most_Common_Education = names(sort(table(Education), decreasing = TRUE))[1],
+      Most_Common_City = names(sort(table(City), decreasing = TRUE))[1],
+      Avg_Refined_Passion = mean(Refined_Passion, na.rm = TRUE),
+      Avg_Modern_Simplicity = mean(Modern_Simplicity, na.rm = TRUE), 
+      Pre_Campaign_Profit = mean(`Pre-Campaign`, na.rm = TRUE),  
+      Post_Campaign_Profit = mean(`Post-Campaign`, na.rm = TRUE)  
+    )
+
+  return(cluster_summary)
+}
+
+
+action_impact <- history_with_profit %>%
+  mutate(Time_Period = case_when(
+    Time < 121 ~ "Pre-Campaign",
+    Time > 123 ~ "Post-Campaign",
+    TRUE ~ NA_character_  # Exclude Time values 121, 122, and 123
+  )) %>%
+  filter(!is.na(Time_Period)) %>%  # Remove rows with NA Time_Period
+  group_by(ID, Time_Period) %>%
+  summarise(
+    Profit = mean(Profit, na.rm = TRUE),
+    .groups = "drop"
+  ) %>%
+  pivot_wider(names_from = Time_Period, values_from = Profit)
+
+
+cluster_summary_group_1 <- perform_clustering_with_scales_WITH_PROFIT(
+  group_1,
+  SocioDemo,
+  centers = 3,
+  refined_passion = Refined_Passion,
+  modern_simplicity = Modern_Simplicity,
+  profit_data = action_impact
+)
+
+cluster_summary_group_2 <- perform_clustering_with_scales_WITH_PROFIT(
+  group_2,
+  SocioDemo,
+  centers = 3,
+  refined_passion = Refined_Passion,
+  modern_simplicity = Modern_Simplicity,
+  profit_data = action_impact
+)
+
+
+print("Cluster Summary for Group 1 (Action = 1)")
+print(cluster_summary_group_1)
+
+print("Cluster Summary for Group 2 (Action = 2)")
+print(cluster_summary_group_2)
+```
+
+
+
